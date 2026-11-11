@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>智慧儲存庫與食品過期管理系統</title>
     
-    <!-- 引入外部輕量 AI 庫 (TensorFlow.js 與 MobileNet 影像辨識模型，完全在手機本地運算) -->
+    <!-- 引入外部輕量 AI 庫 (TensorFlow.js 與 MobileNet) -->
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet"></script>
     <!-- 引入商品條碼掃描庫 -->
@@ -14,7 +14,18 @@
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #eef2f5; margin: 0; padding: 15px; color: #333; }
         .container { max-width: 550px; margin: 0 auto; background: white; padding: 20px; border-radius: 14px; box-shadow: 0 4px 15px rgba(0,0,0,0.08); }
-        h1 { font-size: 20px; color: #2c3e50; text-align: center; margin-bottom: 20px; }
+        h1 { font-size: 20px; color: #2c3e50; text-align: center; margin-bottom: 10px; }
+        
+        /* 使用者登入列樣式 */
+        .user-bar { background: #e8f4fd; border: 1px solid #bbe1fa; padding: 10px 15px; border-radius: 8px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; font-size: 14px; }
+        .user-bar span { font-weight: bold; color: #2980b9; }
+        .switch-user-btn { background: #e74c3c; color: white; border: none; padding: 6px 12px; border-radius: 6px; font-size: 12px; cursor: pointer; margin-top: 0; width: auto; }
+
+        /* 登入遮罩畫面 */
+        #loginModal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); display: flex; justify-content: center; align-items: center; z-index: 1000; }
+        .login-card { background: white; padding: 25px; border-radius: 12px; width: 85%; max-width: 350px; box-shadow: 0 5px 20px rgba(0,0,0,0.2); }
+        .login-card h2 { margin-top: 0; font-size: 18px; color: #2c3e50; text-align: center; }
+
         .card { background: #fafafa; border: 1px solid #e1e8ed; padding: 15px; border-radius: 10px; margin-bottom: 15px; }
         .card h3 { margin-top: 0; font-size: 15px; color: #34495e; border-bottom: 2px solid #ebedf0; padding-bottom: 8px; }
         label { display: block; margin-top: 10px; font-weight: 600; font-size: 13px; }
@@ -41,10 +52,32 @@
 </head>
 <body>
 
+    <!-- 登入與創建使用者彈跳視窗 -->
+    <div id="loginModal">
+        <div class="login-card">
+            <h2>👤 選擇或建立使用者</h2>
+            <label>選擇現有使用者:</label>
+            <select id="existingUserSelect"></select>
+            <button type="button" onclick="loginUser()" style="background: #27ae60; margin-top: 10px;">登入選定使用者</button>
+            
+            <hr style="margin: 20px 0; border: 0; border-top: 1px solid #eee;">
+            
+            <label>建立新使用者:</label>
+            <input type="text" id="newUsernameInput" placeholder="輸入新使用者名稱 (例如: 媽媽)">
+            <button type="button" onclick="createNewUser()" class="add-btn">➕ 建立並登入</button>
+        </div>
+    </div>
+
 <div class="container">
     <h1>📦 智慧儲存庫與食品管理</h1>
 
-    <!-- 頁籤切換：入庫登記 vs 庫存清單 -->
+    <!-- 使用者狀態列 -->
+    <div class="user-bar">
+        <div>當前使用者: <span id="currentUserNameDisplay">載入中...</span></div>
+        <button class="switch-user-btn" onclick="showLoginModal()">切換 / 新增使用者</button>
+    </div>
+
+    <!-- 頁籤切換 -->
     <div class="tabs">
         <button class="tab-btn active" onclick="switchTab('formTab', this)">📝 物品入庫</button>
         <button class="tab-btn" onclick="switchTab('listTab', this)">📋 現有庫存清單</button>
@@ -109,8 +142,8 @@
 <script>
     let aiModel = undefined;
     let base64Photo = "";
+    let currentUser = "";
 
-    // 預設儲存庫資料
     const defaultStorages = [
         { id: "wardrobe", name: "🧥 臥室衣櫃" },
         { id: "toolbox", name: "🔧 工具箱" },
@@ -118,11 +151,88 @@
     ];
 
     window.onload = async function() {
-        // 1. 初始化瀏覽器 LocalStorage 資料
-        initLocalStorage();
-        loadStorages();
+        initAppUsers();
+        
+        // 載入 AI 模型
+        try {
+            aiModel = await mobilenet.load();
+            console.log("✅ 本地 AI 模型載入完成");
+        } catch(e) { console.log("AI 載入失敗"); }
+    };
 
-        // 2. 解析網址參數 (支援 NFC 貼紙直接帶入分類與儲位)
+    // 初始化使用者系統
+    function initAppUsers() {
+        let users = JSON.parse(localStorage.getItem('app_users')) || ["預設使用者"];
+        localStorage.setItem('app_users', JSON.stringify(users));
+
+        let savedUser = localStorage.getItem('current_user');
+        if (savedUser && users.includes(savedUser)) {
+            setCurrentUser(savedUser);
+        } else {
+            showLoginModal();
+        }
+    }
+
+    // 顯示登入選單
+    function showLoginModal() {
+        let users = JSON.parse(localStorage.getItem('app_users')) || [];
+        let select = document.getElementById('existingUserSelect');
+        select.innerHTML = '';
+        users.forEach(u => {
+            let opt = document.createElement('option');
+            opt.value = u;
+            opt.textContent = u;
+            select.appendChild(opt);
+        });
+        document.getElementById('loginModal').style.display = 'flex';
+    }
+
+    // 登入選擇的使用者
+    function loginUser() {
+        let select = document.getElementById('existingUserSelect');
+        if (!select.value) return;
+        setCurrentUser(select.value);
+        document.getElementById('loginModal').style.display = 'none';
+    }
+
+    // 創建新使用者
+    function createNewUser() {
+        let name = document.getElementById('newUsernameInput').value.trim();
+        if (!name) { alert("請輸入使用者名稱"); return; }
+        
+        let users = JSON.parse(localStorage.getItem('app_users')) || [];
+        if (users.includes(name)) {
+            alert("此使用者名稱已存在！");
+            return;
+        }
+
+        users.push(name);
+        localStorage.setItem('app_users', JSON.stringify(users));
+        document.getElementById('newUsernameInput').value = '';
+        
+        setCurrentUser(name);
+        document.getElementById('loginModal').style.display = 'none';
+        alert(`✨ 成功建立並切換至使用者: ${name}`);
+    }
+
+    // 設定當前使用者並初始化其專屬資料
+    function setCurrentUser(username) {
+        currentUser = username;
+        localStorage.setItem('current_user', username);
+        document.getElementById('currentUserNameDisplay').textContent = username;
+
+        // 初始化該使用者的專屬 LocalStorage 鍵值
+        if (!localStorage.getItem(`storages_${username}`)) {
+            localStorage.setItem(`storages_${username}`, JSON.stringify(defaultStorages));
+        }
+        if (!localStorage.getItem(`items_${username}`)) {
+            localStorage.setItem(`items_${username}`, JSON.stringify([]));
+        }
+
+        loadStorages();
+        renderInventory();
+
+        // 解析 NFC 參數
         const urlParams = new URLSearchParams(window.location.search);
         const targetStorage = urlParams.get('storage'); 
         const targetLoc = urlParams.get('loc');         
@@ -136,25 +246,6 @@
         if (targetLoc) {
             document.getElementById('locationInput').value = targetLoc;
         }
-
-        // 3. 載入庫存清單
-        renderInventory();
-
-        // 4. 在背景載入手機本地 TensorFlow.js AI 模型
-        try {
-            aiModel = await mobilenet.load();
-            console.log("✅ 本地 AI 模型載入完成");
-        } catch(e) { console.log("AI 載入失敗"); }
-    };
-
-    // 初始化 LocalStorage
-    function initLocalStorage() {
-        if (!localStorage.getItem('storages')) {
-            localStorage.setItem('storages', JSON.stringify(defaultStorages));
-        }
-        if (!localStorage.getItem('items')) {
-            localStorage.setItem('items', JSON.stringify([]));
-        }
     }
 
     // 切換頁籤
@@ -166,9 +257,9 @@
         if(tabId === 'listTab') renderInventory();
     }
 
-    // 載入儲存庫下拉選單
+    // 載入當前使用者的儲存庫下拉選單
     function loadStorages() {
-        let storages = JSON.parse(localStorage.getItem('storages'));
+        let storages = JSON.parse(localStorage.getItem(`storages_${currentUser}`)) || defaultStorages;
         let select = document.getElementById('storageSelect');
         select.innerHTML = '';
         storages.forEach(s => {
@@ -183,10 +274,11 @@
     function addNewStorage() {
         let name = document.getElementById('newStorageName').value.trim();
         if (!name) { alert("請輸入名稱"); return; }
-        let storages = JSON.parse(localStorage.getItem('storages'));
+        let key = `storages_${currentUser}`;
+        let storages = JSON.parse(localStorage.getItem(key)) || [];
         let newId = 'store_' + Date.now();
         storages.push({ id: newId, name: name });
-        localStorage.setItem('storages', JSON.stringify(storages));
+        localStorage.setItem(key, JSON.stringify(storages));
         document.getElementById('newStorageName').value = '';
         loadStorages();
         document.getElementById('storageSelect').value = newId;
@@ -203,7 +295,7 @@
         }).catch(err => alert("相機啟動失敗"));
     }
 
-    // 預覽圖片並轉為 Base64 字串
+    // 預覽圖片
     function previewImage(event) {
         const file = event.target.files[0];
         if (file) {
@@ -231,10 +323,11 @@
         }
     }
 
-    // 儲存物品至瀏覽器 LocalStorage
+    // 儲存物品至當前使用者的資料庫
     function saveItem(event) {
         event.preventDefault();
-        let items = JSON.parse(localStorage.getItem('items'));
+        let key = `items_${currentUser}`;
+        let items = JSON.parse(localStorage.getItem(key)) || [];
         
         let newItem = {
             id: Date.now(),
@@ -248,19 +341,19 @@
         };
 
         items.push(newItem);
-        localStorage.setItem('items', JSON.stringify(items));
+        localStorage.setItem(key, JSON.stringify(items));
 
-        alert("✅ 物品已成功儲存至本地端！");
+        alert("✅ 物品已成功儲存！");
         document.getElementById('itemForm').reset();
         document.getElementById('preview').style.display = 'none';
         base64Photo = "";
         renderInventory();
     }
 
-    // 渲染現有庫存清單
+    // 渲染當前使用者的庫存清單
     function renderInventory() {
-        let items = JSON.parse(localStorage.getItem('items'));
-        let storages = JSON.parse(localStorage.getItem('storages'));
+        let items = JSON.parse(localStorage.getItem(`items_${currentUser}`)) || [];
+        let storages = JSON.parse(localStorage.getItem(`storages_${currentUser}`)) || defaultStorages;
         let container = document.getElementById('inventoryList');
 
         if (items.length === 0) {
@@ -291,9 +384,10 @@
     // 刪除庫存項目
     function deleteItem(id) {
         if (!confirm("確定要刪除此筆記錄嗎？")) return;
-        let items = JSON.parse(localStorage.getItem('items'));
+        let key = `items_${currentUser}`;
+        let items = JSON.parse(localStorage.getItem(key)) || [];
         items = items.filter(i => i.id !== id);
-        localStorage.setItem('items', JSON.stringify(items));
+        localStorage.setItem(key, JSON.stringify(items));
         renderInventory();
     }
 </script>
