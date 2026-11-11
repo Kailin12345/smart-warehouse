@@ -21,15 +21,39 @@
         .user-bar span { font-weight: bold; color: #2980b9; }
         .switch-user-btn { background: #e74c3c; color: white; border: none; padding: 6px 12px; border-radius: 6px; font-size: 12px; cursor: pointer; margin-top: 0; width: auto; }
 
-        /* 登入遮罩畫面 */
-        #loginModal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); display: flex; justify-content: center; align-items: center; z-index: 1000; }
-        .login-card { background: white; padding: 25px; border-radius: 12px; width: 85%; max-width: 350px; box-shadow: 0 5px 20px rgba(0,0,0,0.2); }
+        /* 登入遮罩畫面調整 (提升層級確保手機可點擊) */
+        #loginModal { 
+            position: fixed; 
+            top: 0; 
+            left: 0; 
+            width: 100vw; 
+            height: 100vh; 
+            background: rgba(0,0,0,0.6); 
+            display: flex; 
+            justify-content: center; 
+            align-items: center; 
+            z-index: 99999; 
+        }
+        .login-card { 
+            background: white; 
+            padding: 25px; 
+            border-radius: 12px; 
+            width: 85%; 
+            max-width: 350px; 
+            box-shadow: 0 5px 20px rgba(0,0,0,0.2); 
+            position: relative;
+            z-index: 100000; 
+        }
         .login-card h2 { margin-top: 0; font-size: 18px; color: #2c3e50; text-align: center; }
+        .login-card select, .login-card input {
+            font-size: 16px; 
+            background-color: #fff;
+        }
 
         .card { background: #fafafa; border: 1px solid #e1e8ed; padding: 15px; border-radius: 10px; margin-bottom: 15px; }
         .card h3 { margin-top: 0; font-size: 15px; color: #34495e; border-bottom: 2px solid #ebedf0; padding-bottom: 8px; }
         label { display: block; margin-top: 10px; font-weight: 600; font-size: 13px; }
-        input, select { width: 100%; padding: 10px; margin-top: 5px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; }
+        input, select { width: 100%; padding: 10px; margin-top: 5px; border: 1px solid #ccc; border-radius: 6px; box-sizing: border-box; font-size: 16px; }
         button { background: #3498db; color: white; border: none; padding: 12px; width: 100%; border-radius: 8px; font-size: 15px; font-weight: bold; margin-top: 15px; cursor: pointer; }
         .ai-btn { background: #e67e22; }
         .barcode-btn { background: #8e44ad; }
@@ -337,7 +361,7 @@
         let count = 0;
         items.forEach(item => {
             if (item.storageId === sourceStorageId) {
-                item.storageId = targetStorageId; // 更改歸屬倉庫
+                item.storageId = targetStorageId; 
                 count++;
             }
         });
